@@ -17,10 +17,10 @@ dist/
 .ruff_cache/
 
 # Downloads / local artifacts
-downloads/
-tmp/
-cookies/
-subtitles/
+/downloads/
+/tmp/
+/cookies/
+/subtitles/
 *.mp4
 *.m4a
 *.mp3
