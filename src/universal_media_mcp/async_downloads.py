@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 import uuid
@@ -523,7 +524,7 @@ class AsyncDownloadManager:
                 file_size = None
         return file_path, file_size
 
-    def wait_for_downloads(
+    async def wait_for_downloads(
         self,
         task_ids: List[str],
         *,
@@ -531,7 +532,7 @@ class AsyncDownloadManager:
         timeout_seconds: float = 300.0,
         poll_interval: float = 1.0,
     ) -> Dict[str, Any]:
-        """Wait for downloads to complete.
+        """Wait for downloads to complete (async version).
 
         Args:
             task_ids: List of task IDs to wait for.
@@ -660,4 +661,4 @@ class AsyncDownloadManager:
                     },
                 }
 
-            time.sleep(poll_interval)
+            await asyncio.sleep(poll_interval)

@@ -130,7 +130,7 @@ def create_server() -> Any:
         return async_downloads.cancel_download(task_id)
 
     @mcp.tool()
-    def wait_for_downloads(
+    async def wait_for_downloads(
         task_ids: Sequence[str],
         mode: str = "any",
         timeout_seconds: float = 300.0,
@@ -159,7 +159,7 @@ def create_server() -> Any:
             4. Repeat step 2-3 with remaining pending IDs until all done
         """
 
-        return async_downloads.wait_for_downloads(
+        return await async_downloads.wait_for_downloads(
             list(task_ids),
             mode=mode,
             timeout_seconds=timeout_seconds,
