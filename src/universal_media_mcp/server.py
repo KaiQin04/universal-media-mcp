@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from universal_media_mcp.async_downloads import AsyncDownloadManager
 from universal_media_mcp.auth import AuthManager
 from universal_media_mcp.config import Settings
 from universal_media_mcp.downloader import (
@@ -45,6 +46,12 @@ def create_server() -> Any:
         subtitle_format=settings.subtitle_format,
         max_chars=settings.subtitle_max_chars,
     )
+    async_downloads = AsyncDownloadManager(
+        client,
+        default_video_quality=settings.default_video_quality,
+        default_audio_format=settings.default_audio_format,
+        default_audio_quality=settings.default_audio_quality,
+    )
 
     mcp = FastMCP("universal-media")
 
@@ -83,6 +90,38 @@ def create_server() -> Any:
         """Download audio and convert with ffmpeg (default: MP3)."""
 
         return audio.download_audio(url, audio_format=format, quality=quality)
+
+    @mcp.tool()
+    def start_download(
+        url: str,
+        quality: str = "best",
+        media_type: str = "video",
+    ) -> Dict[str, Any]:
+        """Start a background download task and return a task id."""
+
+        return async_downloads.start_download(
+            url,
+            quality=quality,
+            media_type=media_type,
+        )
+
+    @mcp.tool()
+    def get_download_status(task_id: str) -> Dict[str, Any]:
+        """Get status information for a background download task."""
+
+        return async_downloads.get_download_status(task_id)
+
+    @mcp.tool()
+    def list_downloads(status_filter: Optional[str] = None) -> Dict[str, Any]:
+        """List background download tasks."""
+
+        return async_downloads.list_downloads(status_filter=status_filter)
+
+    @mcp.tool()
+    def cancel_download(task_id: str) -> Dict[str, Any]:
+        """Request cancellation of a background download task."""
+
+        return async_downloads.cancel_download(task_id)
 
     @mcp.tool()
     def get_subtitles(
