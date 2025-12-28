@@ -562,11 +562,25 @@ class AsyncDownloadManager:
         while True:
             elapsed = time.monotonic() - start_time
             if elapsed >= timeout_seconds:
+                pending_list = list(pending_ids)
                 return {
                     "completed": completed_tasks,
-                    "pending": list(pending_ids),
+                    "pending": pending_list,
                     "timed_out": True,
                     "error": None,
+                    "next_action": {
+                        "description": (
+                            f"Timeout reached. {len(completed_tasks)} completed, "
+                            f"{len(pending_list)} still pending. "
+                            "Call wait_for_downloads again with pending IDs."
+                        ),
+                        "pending_task_ids": pending_list,
+                        "completed_file_paths": [
+                            t.get("file_path")
+                            for t in completed_tasks
+                            if t.get("file_path")
+                        ],
+                    },
                 }
 
             with self._lock:
@@ -590,11 +604,26 @@ class AsyncDownloadManager:
                         completed_tasks.append(task.to_status_dict())
 
             if normalized_mode == "any" and completed_tasks:
+                pending_list = list(pending_ids)
                 return {
                     "completed": completed_tasks,
-                    "pending": list(pending_ids),
+                    "pending": pending_list,
                     "timed_out": False,
                     "error": None,
+                    "next_action": {
+                        "description": (
+                            f"Process {len(completed_tasks)} completed download(s). "
+                            f"{len(pending_list)} still pending."
+                        )
+                        if pending_list
+                        else f"All {len(completed_tasks)} downloads complete. Process files.",
+                        "pending_task_ids": pending_list,
+                        "completed_file_paths": [
+                            t.get("file_path")
+                            for t in completed_tasks
+                            if t.get("file_path")
+                        ],
+                    },
                 }
 
             if normalized_mode == "all" and not pending_ids:
@@ -603,6 +632,15 @@ class AsyncDownloadManager:
                     "pending": [],
                     "timed_out": False,
                     "error": None,
+                    "next_action": {
+                        "description": f"All {len(completed_tasks)} downloads complete. Process files.",
+                        "pending_task_ids": [],
+                        "completed_file_paths": [
+                            t.get("file_path")
+                            for t in completed_tasks
+                            if t.get("file_path")
+                        ],
+                    },
                 }
 
             if not pending_ids:
@@ -611,6 +649,15 @@ class AsyncDownloadManager:
                     "pending": [],
                     "timed_out": False,
                     "error": None,
+                    "next_action": {
+                        "description": f"All {len(completed_tasks)} downloads complete. Process files.",
+                        "pending_task_ids": [],
+                        "completed_file_paths": [
+                            t.get("file_path")
+                            for t in completed_tasks
+                            if t.get("file_path")
+                        ],
+                    },
                 }
 
             time.sleep(poll_interval)
