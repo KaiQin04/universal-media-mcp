@@ -130,40 +130,29 @@ def create_server() -> Any:
         return async_downloads.cancel_download(task_id)
 
     @mcp.tool()
-    async def wait_for_downloads(
+    def check_downloads(
         task_ids: Sequence[str],
-        mode: str = "any",
-        timeout_seconds: float = 300.0,
     ) -> Dict[str, Any]:
-        """Wait for background downloads to complete.
+        """Check status of background downloads (non-blocking).
 
-        Use this after starting multiple async downloads to be notified
-        when downloads finish, without manual polling.
+        Returns immediately with current status. Call repeatedly to poll.
 
         Args:
-            task_ids: List of task IDs to wait for.
-            mode: "any" returns when ANY task completes (recommended for
-                  processing downloads as they finish).
-                  "all" waits for ALL tasks to complete.
-            timeout_seconds: Maximum wait time (default 300 = 5 minutes).
+            task_ids: List of task IDs to check.
 
         Returns:
             completed: List of finished task statuses (with file_path).
             pending: List of task IDs still in progress.
-            timed_out: True if timeout was reached.
+            all_done: True if all tasks have finished.
 
         Example workflow:
-            1. Start 5 downloads with download_video_async -> get 5 task_ids
-            2. Call wait_for_downloads(task_ids, mode="any")
-            3. Process the completed download(s)
-            4. Repeat step 2-3 with remaining pending IDs until all done
+            1. Start downloads with download_video_async -> get task_ids
+            2. Call check_downloads(task_ids)
+            3. If completed has items, process those files
+            4. If pending has items, call check_downloads again
         """
 
-        return await async_downloads.wait_for_downloads(
-            list(task_ids),
-            mode=mode,
-            timeout_seconds=timeout_seconds,
-        )
+        return async_downloads.check_downloads(list(task_ids))
 
     @mcp.tool()
     def get_subtitles(

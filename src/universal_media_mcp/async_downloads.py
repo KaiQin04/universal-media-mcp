@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import threading
 import time
 import uuid
@@ -524,141 +523,80 @@ class AsyncDownloadManager:
                 file_size = None
         return file_path, file_size
 
-    async def wait_for_downloads(
+    def check_downloads(
         self,
         task_ids: List[str],
-        *,
-        mode: str = "any",
-        timeout_seconds: float = 300.0,
-        poll_interval: float = 1.0,
     ) -> Dict[str, Any]:
-        """Wait for downloads to complete (async version).
+        """Check current status of downloads (non-blocking).
+
+        Returns immediately with current status of all requested tasks.
+        Call repeatedly if you want to poll for completion.
 
         Args:
-            task_ids: List of task IDs to wait for.
-            mode: "any" returns when any task completes,
-                  "all" waits for all tasks to complete.
-            timeout_seconds: Maximum wait time (default 5 minutes).
-            poll_interval: How often to check status (default 1 second).
+            task_ids: List of task IDs to check.
 
         Returns:
-            Dict with completed tasks, pending task IDs, and timeout status.
+            Dict with completed tasks, pending task IDs, and file paths.
         """
         if not task_ids:
             return {
                 "completed": [],
                 "pending": [],
-                "timed_out": False,
+                "all_done": True,
                 "error": "No task IDs provided.",
             }
 
-        normalized_mode = (mode or "any").strip().lower()
-        if normalized_mode not in ("any", "all"):
-            normalized_mode = "any"
-
-        start_time = time.monotonic()
         completed_tasks: List[Dict[str, Any]] = []
-        pending_ids = set(task_ids)
+        pending_list: List[str] = []
 
-        while True:
-            elapsed = time.monotonic() - start_time
-            if elapsed >= timeout_seconds:
-                pending_list = list(pending_ids)
-                return {
-                    "completed": completed_tasks,
-                    "pending": pending_list,
-                    "timed_out": True,
-                    "error": None,
-                    "next_action": {
-                        "description": (
-                            f"Timeout reached. {len(completed_tasks)} completed, "
-                            f"{len(pending_list)} still pending. "
-                            "Call wait_for_downloads again with pending IDs."
-                        ),
-                        "pending_task_ids": pending_list,
-                        "completed_file_paths": [
-                            t.get("file_path")
-                            for t in completed_tasks
-                            if t.get("file_path")
-                        ],
-                    },
-                }
+        with self._lock:
+            for task_id in task_ids:
+                task = self._tasks.get(task_id)
+                if task is None:
+                    completed_tasks.append({
+                        "task_id": task_id,
+                        "status": STATUS_NOT_FOUND,
+                        "error": "Unknown task_id.",
+                    })
+                    continue
 
-            with self._lock:
-                for task_id in list(pending_ids):
-                    task = self._tasks.get(task_id)
-                    if task is None:
-                        pending_ids.discard(task_id)
-                        completed_tasks.append({
-                            "task_id": task_id,
-                            "status": STATUS_NOT_FOUND,
-                            "error": "Unknown task_id.",
-                        })
-                        continue
+                if task.status in (
+                    STATUS_COMPLETED,
+                    STATUS_FAILED,
+                    STATUS_CANCELED,
+                ):
+                    completed_tasks.append(task.to_status_dict())
+                else:
+                    pending_list.append(task_id)
 
-                    if task.status in (
-                        STATUS_COMPLETED,
-                        STATUS_FAILED,
-                        STATUS_CANCELED,
-                    ):
-                        pending_ids.discard(task_id)
-                        completed_tasks.append(task.to_status_dict())
+        all_done = len(pending_list) == 0
+        completed_paths = [
+            t.get("file_path")
+            for t in completed_tasks
+            if t.get("file_path")
+        ]
 
-            if normalized_mode == "any" and completed_tasks:
-                pending_list = list(pending_ids)
-                return {
-                    "completed": completed_tasks,
-                    "pending": pending_list,
-                    "timed_out": False,
-                    "error": None,
-                    "next_action": {
-                        "description": (
-                            f"Process {len(completed_tasks)} completed download(s). "
-                            f"{len(pending_list)} still pending."
-                        )
-                        if pending_list
-                        else f"All {len(completed_tasks)} downloads complete. Process files.",
-                        "pending_task_ids": pending_list,
-                        "completed_file_paths": [
-                            t.get("file_path")
-                            for t in completed_tasks
-                            if t.get("file_path")
-                        ],
-                    },
-                }
+        if all_done:
+            description = f"All {len(completed_tasks)} downloads complete. Process files."
+        elif completed_tasks:
+            description = (
+                f"{len(completed_tasks)} completed, {len(pending_list)} still downloading. "
+                "Process completed files or call check_downloads again."
+            )
+        else:
+            description = (
+                f"All {len(pending_list)} downloads still in progress. "
+                "Call check_downloads again in a few seconds."
+            )
 
-            if normalized_mode == "all" and not pending_ids:
-                return {
-                    "completed": completed_tasks,
-                    "pending": [],
-                    "timed_out": False,
-                    "error": None,
-                    "next_action": {
-                        "description": f"All {len(completed_tasks)} downloads complete. Process files.",
-                        "pending_task_ids": [],
-                        "completed_file_paths": [
-                            t.get("file_path")
-                            for t in completed_tasks
-                            if t.get("file_path")
-                        ],
-                    },
-                }
-
-            if not pending_ids:
-                return {
-                    "completed": completed_tasks,
-                    "pending": [],
-                    "timed_out": False,
-                    "error": None,
-                    "next_action": {
-                        "description": f"All {len(completed_tasks)} downloads complete. Process files.",
-                        "pending_task_ids": [],
-                        "completed_file_paths": [
-                            t.get("file_path")
-                            for t in completed_tasks
-                            if t.get("file_path")
-                        ],
-                    },
-                }
-
-            await asyncio.sleep(poll_interval)
+        return {
+            "completed": completed_tasks,
+            "pending": pending_list,
+            "all_done": all_done,
+            "error": None,
+            "next_action": {
+                "description": description,
+                "pending_task_ids": pending_list,
+                "completed_file_paths": completed_paths,
+            },
+        }
