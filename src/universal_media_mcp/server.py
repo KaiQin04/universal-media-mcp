@@ -8,10 +8,8 @@ from universal_media_mcp.async_downloads import AsyncDownloadManager
 from universal_media_mcp.auth import AuthManager
 from universal_media_mcp.config import Settings
 from universal_media_mcp.downloader import (
-    AudioDownloader,
     MetadataDownloader,
     SubtitleDownloader,
-    VideoDownloader,
     YtDlpClient,
 )
 from universal_media_mcp.security import PathValidator
@@ -38,8 +36,6 @@ def create_server() -> Any:
         ffmpeg_location=settings.ffmpeg_location,
     )
 
-    video = VideoDownloader(client)
-    audio = AudioDownloader(client)
     metadata = MetadataDownloader(client)
     subtitles = SubtitleDownloader(
         client,
@@ -66,38 +62,6 @@ def create_server() -> Any:
         """Extract metadata for a media URL without downloading."""
 
         return metadata.get_metadata(url)
-
-    @mcp.tool()
-    def download_video(
-        url: str,
-        quality: str = "best",
-        max_filesize_mb: Optional[int] = None,
-    ) -> Dict[str, Any]:
-        """Download a video (MP4) from a supported URL (blocking).
-
-        For long downloads or batch workflows, prefer download_video_async or
-        start_download + get_download_status to avoid MCP timeouts.
-        """
-
-        return video.download_video(
-            url,
-            quality=quality,
-            max_filesize_mb=max_filesize_mb,
-        )
-
-    @mcp.tool()
-    def download_audio(
-        url: str,
-        format: str = "mp3",
-        quality: str = "192",
-    ) -> Dict[str, Any]:
-        """Download audio and convert with ffmpeg (blocking).
-
-        For long downloads or batch workflows, prefer download_audio_async or
-        start_download + get_download_status to avoid MCP timeouts.
-        """
-
-        return audio.download_audio(url, audio_format=format, quality=quality)
 
     @mcp.tool()
     def start_download(
