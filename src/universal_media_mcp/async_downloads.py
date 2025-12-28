@@ -215,20 +215,20 @@ class AsyncDownloadManager:
     def get_download_status(self, task_id: str) -> Dict[str, Any]:
         """Return the current status payload for a task."""
 
-        with self._lock:
-            task = self._tasks.get(task_id)
-            if task is None:
-                return {
-                    "task_id": task_id,
-                    "status": STATUS_NOT_FOUND,
-                    "progress": None,
-                    "file_path": None,
-                    "file_size": None,
-                    "error": "Unknown task_id.",
-                    "started_at": None,
-                    "completed_at": None,
-                }
-            return task.to_status_dict()
+        # Read without lock to avoid contention with progress updates.
+        task = self._tasks.get(task_id)
+        if task is None:
+            return {
+                "task_id": task_id,
+                "status": STATUS_NOT_FOUND,
+                "progress": None,
+                "file_path": None,
+                "file_size": None,
+                "error": "Unknown task_id.",
+                "started_at": None,
+                "completed_at": None,
+            }
+        return task.to_status_dict()
 
     def list_downloads(self, status_filter: Optional[str] = None) -> Dict[str, Any]:
         """List tasks, optionally filtered by status."""
@@ -237,8 +237,8 @@ class AsyncDownloadManager:
         if status_filter is not None:
             normalized_filter = status_filter.strip().lower()
 
-        with self._lock:
-            tasks = list(self._tasks.values())
+        # Read without lock to avoid contention with progress updates.
+        tasks = list(self._tasks.values())
 
         if normalized_filter:
             tasks = [task for task in tasks if task.status == normalized_filter]
@@ -549,25 +549,28 @@ class AsyncDownloadManager:
         completed_tasks: List[Dict[str, Any]] = []
         pending_list: List[str] = []
 
-        with self._lock:
-            for task_id in task_ids:
-                task = self._tasks.get(task_id)
-                if task is None:
-                    completed_tasks.append({
-                        "task_id": task_id,
-                        "status": STATUS_NOT_FOUND,
-                        "error": "Unknown task_id.",
-                    })
-                    continue
+        # Read without lock to avoid contention with progress updates.
+        # Python GIL ensures dict.get() is atomic.
+        for task_id in task_ids:
+            task = self._tasks.get(task_id)
+            if task is None:
+                completed_tasks.append({
+                    "task_id": task_id,
+                    "status": STATUS_NOT_FOUND,
+                    "error": "Unknown task_id.",
+                })
+                continue
 
-                if task.status in (
-                    STATUS_COMPLETED,
-                    STATUS_FAILED,
-                    STATUS_CANCELED,
-                ):
-                    completed_tasks.append(task.to_status_dict())
-                else:
-                    pending_list.append(task_id)
+            # Read status once to avoid race conditions
+            status = task.status
+            if status in (
+                STATUS_COMPLETED,
+                STATUS_FAILED,
+                STATUS_CANCELED,
+            ):
+                completed_tasks.append(task.to_status_dict())
+            else:
+                pending_list.append(task_id)
 
         all_done = len(pending_list) == 0
         completed_paths = [
