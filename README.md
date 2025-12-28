@@ -8,6 +8,7 @@ A Model Context Protocol (MCP) server that provides unified media download tools
 
 - **Video Download** - Download videos in MP4 format with quality selection
 - **Audio Download** - Extract audio and convert to MP3 (or other formats via ffmpeg)
+- **Async Downloads** - Start background downloads and query progress/status
 - **Subtitle Retrieval** - Fetch subtitles with option to save to file or return content directly
 - **Metadata Extraction** - Get video metadata without downloading
 - **URL Support Check** - Verify if a URL is supported before processing
@@ -49,6 +50,12 @@ The server runs via stdio transport and is designed to be integrated with MCP-co
 | `get_metadata` | Extract metadata without downloading | `url` |
 | `download_video` | Download video as MP4 | `url`, `quality`, `max_filesize_mb` |
 | `download_audio` | Download and convert to audio | `url`, `format`, `quality` |
+| `start_download` | Start a background download task | `url`, `quality`, `media_type`, `audio_format` |
+| `download_video_async` | Start a background video download task | `url`, `quality` |
+| `download_audio_async` | Start a background audio download task | `url`, `format`, `quality` |
+| `get_download_status` | Get status for a background download task | `task_id` |
+| `list_downloads` | List background download tasks | `status_filter` |
+| `cancel_download` | Cancel a background download task | `task_id` |
 | `get_subtitles` | Retrieve subtitles | `url`, `languages`, `save_to_file` |
 
 ## Configuration

@@ -73,7 +73,11 @@ def create_server() -> Any:
         quality: str = "best",
         max_filesize_mb: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Download a video (MP4) from a supported URL."""
+        """Download a video (MP4) from a supported URL (blocking).
+
+        For long downloads or batch workflows, prefer download_video_async or
+        start_download + get_download_status to avoid MCP timeouts.
+        """
 
         return video.download_video(
             url,
@@ -87,7 +91,11 @@ def create_server() -> Any:
         format: str = "mp3",
         quality: str = "192",
     ) -> Dict[str, Any]:
-        """Download audio and convert with ffmpeg (default: MP3)."""
+        """Download audio and convert with ffmpeg (blocking).
+
+        For long downloads or batch workflows, prefer download_audio_async or
+        start_download + get_download_status to avoid MCP timeouts.
+        """
 
         return audio.download_audio(url, audio_format=format, quality=quality)
 
@@ -96,13 +104,47 @@ def create_server() -> Any:
         url: str,
         quality: str = "best",
         media_type: str = "video",
+        audio_format: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Start a background download task and return a task id."""
+        """Start a background download task (non-blocking).
+
+        Returns a task_id. Call get_download_status to track progress and
+        completion.
+        """
 
         return async_downloads.start_download(
             url,
             quality=quality,
             media_type=media_type,
+            audio_format=audio_format,
+        )
+
+    @mcp.tool()
+    def download_video_async(
+        url: str,
+        quality: str = "best",
+    ) -> Dict[str, Any]:
+        """Start a background video download task (non-blocking)."""
+
+        return async_downloads.start_download(
+            url,
+            quality=quality,
+            media_type="video",
+        )
+
+    @mcp.tool()
+    def download_audio_async(
+        url: str,
+        format: str = "mp3",
+        quality: str = "192",
+    ) -> Dict[str, Any]:
+        """Start a background audio download task (non-blocking)."""
+
+        return async_downloads.start_download(
+            url,
+            quality=quality,
+            media_type="audio",
+            audio_format=format,
         )
 
     @mcp.tool()

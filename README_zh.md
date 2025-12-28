@@ -8,6 +8,7 @@
 
 - **影片下載** - 下載 MP4 格式影片，支援畫質選擇
 - **音訊下載** - 擷取音訊並轉換為 MP3（或透過 ffmpeg 轉換為其他格式）
+- **非同步下載** - 啟動背景下載任務並可查詢進度/狀態
 - **字幕擷取** - 取得字幕，可選擇存檔或直接回傳內容
 - **Metadata 擷取** - 不下載即可取得影片資訊
 - **URL 支援檢查** - 在處理前確認 URL 是否被支援
@@ -49,6 +50,12 @@ uv run universal-media-mcp
 | `get_metadata` | 不下載直接擷取 metadata | `url` |
 | `download_video` | 下載 MP4 影片 | `url`, `quality`, `max_filesize_mb` |
 | `download_audio` | 下載並轉換為音訊 | `url`, `format`, `quality` |
+| `start_download` | 啟動背景下載任務 | `url`, `quality`, `media_type`, `audio_format` |
+| `download_video_async` | 啟動背景影片下載任務 | `url`, `quality` |
+| `download_audio_async` | 啟動背景音訊下載任務 | `url`, `format`, `quality` |
+| `get_download_status` | 查詢背景下載任務狀態 | `task_id` |
+| `list_downloads` | 列出背景下載任務 | `status_filter` |
+| `cancel_download` | 取消背景下載任務 | `task_id` |
 | `get_subtitles` | 擷取字幕 | `url`, `languages`, `save_to_file` |
 
 ## 設定

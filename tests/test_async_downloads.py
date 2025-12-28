@@ -1,5 +1,7 @@
+import tempfile
 import threading
 import unittest
+from pathlib import Path
 
 from universal_media_mcp.async_downloads import (
     AsyncDownloadManager,
@@ -146,3 +148,28 @@ class TestAsyncDownloadManager(unittest.TestCase):
         self.assertTrue(
             all(task["status"] == STATUS_COMPLETED for task in response["tasks"])
         )
+
+    def test_completed_with_warning_when_file_exists(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            downloaded_path = Path(tmpdir) / "dummy.mp4"
+            downloaded_path.write_bytes(b"abc")
+
+            def runner(task, progress_hook):
+                task.downloaded_files.append(str(downloaded_path))
+                raise RuntimeError("postprocess failed")
+
+            manager = AsyncDownloadManager(
+                None,
+                default_video_quality="best",
+                default_audio_format="mp3",
+                default_audio_quality="192",
+                download_runner=runner,
+            )
+            response = manager.start_download("https://example.com/video")
+            task_id = response["task_id"]
+            manager._tasks[task_id].thread.join(timeout=2)
+
+            status = manager.get_download_status(task_id)
+            self.assertEqual(status["status"], STATUS_COMPLETED)
+            self.assertEqual(status["file_path"], str(downloaded_path))
+            self.assertIn("postprocess failed", status["warning"])

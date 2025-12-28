@@ -83,6 +83,7 @@ class DownloadTask:
     file_path: Optional[str] = None
     file_size: Optional[int] = None
     error: Optional[str] = None
+    warning: Optional[str] = None
 
     started_at: datetime = field(default_factory=utc_now)
     completed_at: Optional[datetime] = None
@@ -100,16 +101,20 @@ class DownloadTask:
         if progress_value > 100:
             progress_value = 100.0
 
+        is_done = self.status in (STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELED)
+
         return {
             "task_id": self.task_id,
             "url": self.url,
             "media_type": self.media_type,
             "quality": self.quality,
             "status": self.status,
+            "is_done": is_done,
             "progress": progress_value,
             "file_path": self.file_path,
             "file_size": self.file_size,
             "error": self.error,
+            "warning": self.warning,
             "started_at": isoformat_or_none(self.started_at),
             "completed_at": isoformat_or_none(self.completed_at),
         }
@@ -148,6 +153,7 @@ class AsyncDownloadManager:
         *,
         quality: str = "best",
         media_type: str = "video",
+        audio_format: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Start a background download and return a task identifier."""
 
@@ -164,14 +170,15 @@ class AsyncDownloadManager:
             }
 
         normalized_quality = (quality or "").strip()
-        audio_format: Optional[str] = None
+        normalized_audio_format = (audio_format or "").strip().lower()
         if normalized_media_type == "video":
             if not normalized_quality:
                 normalized_quality = self._default_video_quality
         else:
             if not normalized_quality or not normalized_quality.isdigit():
                 normalized_quality = self._default_audio_quality
-            audio_format = self._default_audio_format
+            if not normalized_audio_format:
+                normalized_audio_format = self._default_audio_format
 
         task_id = uuid.uuid4().hex
         task = DownloadTask(
@@ -179,7 +186,7 @@ class AsyncDownloadManager:
             url=url,
             media_type=normalized_media_type,
             quality=normalized_quality,
-            audio_format=audio_format,
+            audio_format=normalized_audio_format or None,
         )
 
         thread = threading.Thread(
@@ -193,7 +200,16 @@ class AsyncDownloadManager:
             self._tasks[task_id] = task
 
         thread.start()
-        return {"task_id": task_id, "status": "started", "url": url}
+        return {
+            "task_id": task_id,
+            "status": "started",
+            "url": url,
+            "recommended_poll_seconds": 2,
+            "next_action": {
+                "tool": "get_download_status",
+                "task_id": task_id,
+            },
+        }
 
     def get_download_status(self, task_id: str) -> Dict[str, Any]:
         """Return the current status payload for a task."""
@@ -280,14 +296,25 @@ class AsyncDownloadManager:
             return
         except Exception as exc:
             file_path, file_size = self._best_effort_primary_file(task_id)
-            self._update_task(
-                task_id,
-                status=STATUS_FAILED,
-                error=str(exc),
-                file_path=file_path,
-                file_size=file_size,
-                completed_at=utc_now(),
-            )
+            if file_path:
+                self._update_task(
+                    task_id,
+                    status=STATUS_COMPLETED,
+                    progress=100.0,
+                    file_path=file_path,
+                    file_size=file_size,
+                    warning=str(exc),
+                    error=None,
+                    completed_at=utc_now(),
+                )
+            else:
+                self._update_task(
+                    task_id,
+                    status=STATUS_FAILED,
+                    error=str(exc),
+                    warning=None,
+                    completed_at=utc_now(),
+                )
             return
 
         self._update_task(
@@ -355,6 +382,7 @@ class AsyncDownloadManager:
         file_path: Optional[str] = None,
         file_size: Optional[int] = None,
         error: Optional[str] = None,
+        warning: Optional[str] = None,
         completed_at: Optional[datetime] = None,
     ) -> None:
         with self._lock:
@@ -371,6 +399,8 @@ class AsyncDownloadManager:
                 task.file_size = file_size
             if error is not None:
                 task.error = error
+            if warning is not None:
+                task.warning = warning
             if completed_at is not None:
                 task.completed_at = completed_at
 
@@ -478,6 +508,12 @@ class AsyncDownloadManager:
             downloaded_files=task.downloaded_files,
         )
         file_path = client.best_effort_primary_filepath(info)
+        if file_path:
+            path = Path(file_path)
+            if path.suffix == ".part" or not path.exists():
+                file_path = None
+        if not file_path:
+            file_path = self._choose_primary_file(task.downloaded_files)
         file_size = None
         if file_path:
             try:
