@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from universal_media_mcp.async_downloads import AsyncDownloadManager
 from universal_media_mcp.auth import AuthManager
@@ -164,6 +164,42 @@ def create_server() -> Any:
         """Request cancellation of a background download task."""
 
         return async_downloads.cancel_download(task_id)
+
+    @mcp.tool()
+    def wait_for_downloads(
+        task_ids: Sequence[str],
+        mode: str = "any",
+        timeout_seconds: float = 300.0,
+    ) -> Dict[str, Any]:
+        """Wait for background downloads to complete.
+
+        Use this after starting multiple async downloads to be notified
+        when downloads finish, without manual polling.
+
+        Args:
+            task_ids: List of task IDs to wait for.
+            mode: "any" returns when ANY task completes (recommended for
+                  processing downloads as they finish).
+                  "all" waits for ALL tasks to complete.
+            timeout_seconds: Maximum wait time (default 300 = 5 minutes).
+
+        Returns:
+            completed: List of finished task statuses (with file_path).
+            pending: List of task IDs still in progress.
+            timed_out: True if timeout was reached.
+
+        Example workflow:
+            1. Start 5 downloads with download_video_async -> get 5 task_ids
+            2. Call wait_for_downloads(task_ids, mode="any")
+            3. Process the completed download(s)
+            4. Repeat step 2-3 with remaining pending IDs until all done
+        """
+
+        return async_downloads.wait_for_downloads(
+            list(task_ids),
+            mode=mode,
+            timeout_seconds=timeout_seconds,
+        )
 
     @mcp.tool()
     def get_subtitles(

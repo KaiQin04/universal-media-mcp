@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from universal_media_mcp.downloader.audio import build_audio_postprocessors
 from universal_media_mcp.downloader.base import YtDlpClient
@@ -521,3 +522,95 @@ class AsyncDownloadManager:
             except OSError:
                 file_size = None
         return file_path, file_size
+
+    def wait_for_downloads(
+        self,
+        task_ids: List[str],
+        *,
+        mode: str = "any",
+        timeout_seconds: float = 300.0,
+        poll_interval: float = 1.0,
+    ) -> Dict[str, Any]:
+        """Wait for downloads to complete.
+
+        Args:
+            task_ids: List of task IDs to wait for.
+            mode: "any" returns when any task completes,
+                  "all" waits for all tasks to complete.
+            timeout_seconds: Maximum wait time (default 5 minutes).
+            poll_interval: How often to check status (default 1 second).
+
+        Returns:
+            Dict with completed tasks, pending task IDs, and timeout status.
+        """
+        if not task_ids:
+            return {
+                "completed": [],
+                "pending": [],
+                "timed_out": False,
+                "error": "No task IDs provided.",
+            }
+
+        normalized_mode = (mode or "any").strip().lower()
+        if normalized_mode not in ("any", "all"):
+            normalized_mode = "any"
+
+        start_time = time.monotonic()
+        completed_tasks: List[Dict[str, Any]] = []
+        pending_ids = set(task_ids)
+
+        while True:
+            elapsed = time.monotonic() - start_time
+            if elapsed >= timeout_seconds:
+                return {
+                    "completed": completed_tasks,
+                    "pending": list(pending_ids),
+                    "timed_out": True,
+                    "error": None,
+                }
+
+            with self._lock:
+                for task_id in list(pending_ids):
+                    task = self._tasks.get(task_id)
+                    if task is None:
+                        pending_ids.discard(task_id)
+                        completed_tasks.append({
+                            "task_id": task_id,
+                            "status": STATUS_NOT_FOUND,
+                            "error": "Unknown task_id.",
+                        })
+                        continue
+
+                    if task.status in (
+                        STATUS_COMPLETED,
+                        STATUS_FAILED,
+                        STATUS_CANCELED,
+                    ):
+                        pending_ids.discard(task_id)
+                        completed_tasks.append(task.to_status_dict())
+
+            if normalized_mode == "any" and completed_tasks:
+                return {
+                    "completed": completed_tasks,
+                    "pending": list(pending_ids),
+                    "timed_out": False,
+                    "error": None,
+                }
+
+            if normalized_mode == "all" and not pending_ids:
+                return {
+                    "completed": completed_tasks,
+                    "pending": [],
+                    "timed_out": False,
+                    "error": None,
+                }
+
+            if not pending_ids:
+                return {
+                    "completed": completed_tasks,
+                    "pending": [],
+                    "timed_out": False,
+                    "error": None,
+                }
+
+            time.sleep(poll_interval)
